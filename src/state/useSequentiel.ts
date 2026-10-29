@@ -16,6 +16,8 @@ export interface EtatSequentiel {
   vitesseMs: number
   politique: Politique
   arretRetourInitial: boolean
+  /** Jouer l'animation des jetons à chaque tir. */
+  animerTirs: boolean
   /** Transitions entre lesquelles l'utilisateur doit choisir, sinon null. */
   choix: TransitionId[] | null
   message: string | null
@@ -34,6 +36,7 @@ export function useSequentiel(
     vitesseMs: 900,
     politique: 'demander',
     arretRetourInitial: true,
+    animerTirs: true,
     choix: null,
     message: null,
     pasLibres: 0,
@@ -58,7 +61,7 @@ export function useSequentiel(
         return
       }
       const t = scenario.sequence[index]
-      dispatch({ type: 'tirer', transition: t })
+      dispatch({ type: 'tirer', transition: t, origine: 'sequentiel' })
       setSeq((s) => ({
         ...s,
         source: { type: 'scenario', scenario, index: index + 1 },
@@ -86,13 +89,13 @@ export function useSequentiel(
       return
     }
     if (actives.length === 1) {
-      dispatch({ type: 'tirer', transition: actives[0] })
+      dispatch({ type: 'tirer', transition: actives[0], origine: 'sequentiel' })
       setSeq((s) => ({ ...s, pasLibres: s.pasLibres + 1, message: `Tir : ${nom(actives[0])}` }))
       return
     }
     if (seq.politique === 'hasard') {
       const t = actives[Math.floor(Math.random() * actives.length)]
-      dispatch({ type: 'tirer', transition: t })
+      dispatch({ type: 'tirer', transition: t, origine: 'sequentiel' })
       setSeq((s) => ({
         ...s,
         pasLibres: s.pasLibres + 1,
@@ -132,7 +135,7 @@ export function useSequentiel(
     },
     choisir: (t: TransitionId) => {
       if (!seq.choix?.includes(t)) return
-      dispatch({ type: 'tirer', transition: t })
+      dispatch({ type: 'tirer', transition: t, origine: 'sequentiel' })
       setSeq((s) => ({
         ...s,
         choix: null,
@@ -160,7 +163,9 @@ export function useSequentiel(
         message: null,
       })),
     reglages: (
-      r: Partial<Pick<EtatSequentiel, 'vitesseMs' | 'politique' | 'arretRetourInitial'>>,
+      r: Partial<
+        Pick<EtatSequentiel, 'vitesseMs' | 'politique' | 'arretRetourInitial' | 'animerTirs'>
+      >,
     ) => setSeq((s) => ({ ...s, ...r })),
     /** À appeler quand l'utilisateur agit à la main (tir, annuler, réinitialiser). */
     interrompre: () =>

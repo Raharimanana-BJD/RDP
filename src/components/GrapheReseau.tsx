@@ -3,7 +3,18 @@
 
 import cytoscape from 'cytoscape'
 import { useEffect, useRef } from 'react'
+import { trouverTransition } from '../rdp/moteur'
 import type { Marquage, Reseau, TransitionId } from '../rdp/types'
+import type { EntreeHistorique } from '../state/simulation'
+import {
+  adoucir,
+  dureeAnimation,
+  marquageIntermediaire,
+  phaseA,
+  pointSurArc,
+  type Phase,
+  type Point,
+} from './animationTir'
 
 const COULEUR_LIGNE = { A: '#2563eb', B: '#9333ea', 'A+B': '#0d9488' } as const
 
@@ -161,7 +172,68 @@ const STYLE: cytoscape.StylesheetJson = [
     selector: 'edge.derniere',
     style: { 'line-color': '#dc2626', 'target-arrow-color': '#dc2626', width: 3.5 },
   },
+  // Animation d'un tir : après `derniere` pour l'emporter.
+  {
+    selector: 'node.en-tir',
+    style: {
+      'background-color': '#facc15',
+      'border-color': '#fef08a',
+      'underlay-color': '#facc15',
+      'underlay-opacity': 0.45,
+      'underlay-padding': 10,
+      opacity: 1,
+    },
+  },
+  {
+    selector: 'edge.en-cours',
+    style: { 'line-color': '#eab308', 'target-arrow-color': '#eab308', width: 4 },
+  },
+  {
+    selector: 'node.jeton-anim',
+    style: {
+      shape: 'ellipse',
+      width: 13,
+      height: 13,
+      'background-color': '#0f172a',
+      'border-width': 0,
+      label: '',
+      events: 'no',
+      'z-index-compare': 'manual',
+      'z-index': 999,
+    },
+  },
 ]
+
+/**
+ * Met le graphe en accord avec les props. `figer` laisse en place les images des places
+ * et la classe `derniere` : l'animation d'un tir s'en occupe tant qu'elle joue.
+ */
+function rafraichir(cy: cytoscape.Core, props: Props, figer: boolean) {
+  const { reseau, marquage, franchissables, enConflit, choix, derniere, verrouille } = props
+  cy.batch(() => {
+    for (const t of reseau.transitions) {
+      const n = cy.getElementById(t.id)
+      const actif = choix ? choix.includes(t.id) : franchissables.has(t.id) && !verrouille
+      n.toggleClass('franchissable', franchissables.has(t.id))
+      n.toggleClass('conflit', franchissables.has(t.id) && enConflit.has(t.id))
+      n.toggleClass('choix', !!choix?.includes(t.id))
+      n.toggleClass('inactif', !actif)
+    }
+    if (figer) return
+    dessinerMarquage(cy, reseau, marquage)
+    for (const t of reseau.transitions) {
+      cy.getElementById(t.id).toggleClass('derniere', t.id === derniere)
+    }
+    cy.edges().removeClass('derniere')
+    if (derniere) cy.getElementById(derniere).connectedEdges().addClass('derniere')
+  })
+}
+
+function dessinerMarquage(cy: cytoscape.Core, reseau: Reseau, m: Marquage) {
+  for (const p of reseau.places) {
+    cy.getElementById(p.id).data('image', imageJetons(m[p.id] ?? 0))
+  }
+}
 
 /**
  * Arcs longs qui ramènent les lignes à l'état libre : tracés en pointillés et
@@ -189,6 +261,32 @@ const ETIQUETTES: Record<string, 'droite' | 'bas'> = {
   t_raccrocher_B: 'bas',
 }
 
+/** Un arc parcouru par un jeton : son id et son tracé (repère du graphe). */
+interface Chemin {
+  arc: string
+  points: Point[]
+}
+
+interface AnimationEnCours {
+  tir: EntreeHistorique
+  debut: number
+  dureeMs: number
+  rafId: number
+  phase: Phase | null
+  entrees: Chemin[]
+  sorties: Chemin[]
+  jetons: cytoscape.NodeSingular[]
+}
+
+/** Tracé d'un arc tel que Cytoscape le dessine, ou null s'il n'est pas encore calculé. */
+function cheminArc(cy: cytoscape.Core, id: string): Chemin | null {
+  const e = cy.getElementById(id)
+  if (e.empty()) return null
+  const points = [e.sourceEndpoint(), ...(e.controlPoints() ?? []), e.targetEndpoint()]
+  if (points.some((p) => !p || !Number.isFinite(p.x) || !Number.isFinite(p.y))) return null
+  return { arc: id, points: points.map((p) => ({ x: p.x, y: p.y })) }
+}
+
 interface Props {
   reseau: Reseau
   marquage: Marquage
@@ -198,6 +296,10 @@ interface Props {
   choix: TransitionId[] | null
   derniere: TransitionId | null
   verrouille: boolean
+  /** Dernier tir de l'historique : un numéro plus grand que le précédent lance l'animation. */
+  tir: EntreeHistorique | null
+  vitesseMs: number
+  animer: boolean
   onTransition: (id: TransitionId) => void
   onSurvol: (id: string | null) => void
 }
@@ -205,6 +307,9 @@ interface Props {
 export function GrapheReseau(props: Props) {
   const conteneur = useRef<HTMLDivElement>(null)
   const cyRef = useRef<cytoscape.Core | null>(null)
+  const animRef = useRef<AnimationEnCours | null>(null)
+  // Le tir déjà affiché au montage n'est pas rejoué (retour depuis l'onglet Analyse).
+  const dernierNumeroVu = useRef(props.tir?.numero ?? 0)
   const propsRef = useRef(props)
   useEffect(() => {
     propsRef.current = props
@@ -287,6 +392,8 @@ export function GrapheReseau(props: Props) {
     if (conteneur.current) observateur.observe(conteneur.current)
     return () => {
       observateur.disconnect()
+      if (animRef.current) cancelAnimationFrame(animRef.current.rafId)
+      animRef.current = null
       cy.destroy()
       cyRef.current = null
     }
@@ -294,26 +401,102 @@ export function GrapheReseau(props: Props) {
 
   // Mise à jour des jetons et des surbrillances à chaque changement.
   const { reseau, marquage, franchissables, enConflit, choix, derniere, verrouille } = props
+  const { tir, animer } = props
   useEffect(() => {
     const cy = cyRef.current
     if (!cy) return
-    cy.batch(() => {
-      for (const p of reseau.places) {
-        cy.getElementById(p.id).data('image', imageJetons(marquage[p.id] ?? 0))
+    // Un tir sur le point d'être animé : ne pas montrer son marquage final avant les jetons.
+    const vaAnimer = animer && tir !== null && tir.numero > dernierNumeroVu.current
+    rafraichir(cy, propsRef.current, vaAnimer || animRef.current !== null)
+  }, [reseau, marquage, franchissables, enConflit, choix, derniere, verrouille, tir, animer])
+
+  // Animation des tirs : couche visuelle seulement, le marquage est déjà à jour.
+  useEffect(() => {
+    const cy = cyRef.current
+    if (!cy) return
+
+    const nettoyer = (a: AnimationEnCours) => {
+      cy.remove('.jeton-anim')
+      cy.edges('.en-cours').removeClass('en-cours')
+      cy.getElementById(a.tir.transition).removeClass('en-tir')
+      a.jetons = []
+    }
+
+    /** Arrête l'animation; `redessiner` faux quand un nouveau tir enchaîne aussitôt. */
+    const terminer = (redessiner: boolean) => {
+      const a = animRef.current
+      if (!a) return
+      cancelAnimationFrame(a.rafId)
+      animRef.current = null
+      cy.batch(() => nettoyer(a))
+      if (redessiner) rafraichir(cy, propsRef.current, false)
+    }
+
+    const poserPhase = (a: AnimationEnCours, phase: Phase) => {
+      nettoyer(a)
+      a.phase = phase
+      if (phase === 'barre') cy.getElementById(a.tir.transition).addClass('en-tir')
+      const chemins = phase === 'entree' ? a.entrees : phase === 'sortie' ? a.sorties : []
+      a.jetons = chemins.map((c, i) => {
+        cy.getElementById(c.arc).addClass('en-cours')
+        return cy.add({
+          group: 'nodes',
+          data: { id: `jeton-anim-${i}` },
+          position: { ...c.points[0] },
+          classes: 'jeton-anim',
+        })
+      })
+    }
+
+    const image = (maintenant: number) => {
+      const a = animRef.current
+      if (!a) return
+      const { phase, progression } = phaseA(maintenant - a.debut, a.dureeMs)
+      if (phase === 'fin') return terminer(true)
+      cy.batch(() => {
+        if (phase !== a.phase) poserPhase(a, phase)
+        const chemins = phase === 'entree' ? a.entrees : phase === 'sortie' ? a.sorties : []
+        const t = adoucir(progression)
+        chemins.forEach((c, i) => a.jetons[i]?.position(pointSurArc(c.points, t)))
+      })
+      a.rafId = requestAnimationFrame(image)
+    }
+
+    const demarrer = (nouveau: EntreeHistorique) => {
+      const { reseau, vitesseMs } = propsRef.current
+      const t = trouverTransition(reseau, nouveau.transition)
+      const chemins = (ids: string[]) =>
+        ids.map((id) => cheminArc(cy, id)).filter((c): c is Chemin => c !== null)
+      const a: AnimationEnCours = {
+        tir: nouveau,
+        debut: performance.now(),
+        dureeMs: dureeAnimation(nouveau.origine, vitesseMs),
+        rafId: 0,
+        phase: null,
+        entrees: chemins(t.entrees.map((e) => `${e.place}->${t.id}`)),
+        sorties: chemins(t.sorties.map((e) => `${t.id}->${e.place}`)),
+        jetons: [],
       }
-      for (const t of reseau.transitions) {
-        const n = cy.getElementById(t.id)
-        const actif = choix ? choix.includes(t.id) : franchissables.has(t.id) && !verrouille
-        n.toggleClass('franchissable', franchissables.has(t.id))
-        n.toggleClass('conflit', franchissables.has(t.id) && enConflit.has(t.id))
-        n.toggleClass('choix', !!choix?.includes(t.id))
-        n.toggleClass('inactif', !actif)
-        n.toggleClass('derniere', t.id === derniere)
-      }
-      cy.edges().removeClass('derniere')
-      if (derniere) cy.getElementById(derniere).connectedEdges().addClass('derniere')
-    })
-  }, [reseau, marquage, franchissables, enConflit, choix, derniere, verrouille])
+      animRef.current = a
+      cy.batch(() => {
+        // Toutes les places : une animation interrompue a pu laisser un compte intermédiaire.
+        dessinerMarquage(cy, reseau, marquageIntermediaire(t, nouveau.avant))
+        cy.elements('.derniere').removeClass('derniere')
+        poserPhase(a, 'entree')
+      })
+      a.rafId = requestAnimationFrame(image)
+    }
+
+    const nouveau = tir !== null && tir.numero > dernierNumeroVu.current
+    dernierNumeroVu.current = tir?.numero ?? 0
+    if (nouveau && animer) {
+      terminer(false)
+      demarrer(tir)
+    } else if (animRef.current && (!animer || animRef.current.tir !== tir)) {
+      // Annuler, Réinitialiser ou case décochée : on montre l'état réel tout de suite.
+      terminer(true)
+    }
+  }, [tir, animer])
 
   return (
     <div className="graphe">

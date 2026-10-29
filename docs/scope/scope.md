@@ -19,6 +19,7 @@ _Ce sont des recommandations pour garder une construction ordonnée, pas des obl
 | 6 | Historique des tirs | Version 2 | in-progress |
 | 7 | Mode séquentiel et scénarios prédéfinis | Version 2 | in-progress |
 | 8 | Analyse du réseau | Version 3 | in-progress |
+| 9 | Animation des tirs | Version 4 | in-progress |
 
 ## Foundations
 
@@ -92,6 +93,22 @@ Le volet théorique pour la note : matrice d'incidence, graphe des marquages acc
 - [x] Verify it: tests `bun test` et affichage vérifié dans Chromium
 
 code in `src/rdp/analyse.ts`, `src/components/Analyse.tsx`
+
+## Version 4: rendre les tirs lisibles
+
+### 9. Animation des tirs
+Animer chaque tir pour que le jury voie le jeu des jetons : les jetons glissent le long des arcs, des places d'entrée vers la barre, puis de la barre vers les places de sortie, et la transition tirée s'allume brièvement pendant ce passage. La durée suit le curseur de vitesse en mode séquentiel, avec une durée fixe pour un clic manuel.
+**Done when:** chaque tir (clic, bouton, scénario, lecture auto) montre les jetons qui voyagent et la transition qui s'allume; le marquage final est identique à celui d'avant l'animation; la durée suit le curseur de vitesse; un clic pendant une animation ne casse ni le marquage ni l'historique.
+spec: [0002](../specs/0002-animation-tirs.md)
+- [x] Design it (spec): `/architect animation des tirs`
+- [x] Build it: `/develop animation des tirs`
+  - [x] Calculs purs de l'animation et leurs tests (phases, courbes, compte intermédiaire, durée) · AC-2, AC-3, AC-5
+  - [x] Jetons voyageurs et barre allumée sur le graphe, à durée fixe · AC-1, AC-2, AC-3, AC-4, AC-9, AC-10
+  - [x] Interruptions : enchaîner un tir, Annuler et Réinitialiser, changement d'onglet · AC-6, AC-7, AC-10
+  - [x] Origine du tir, durée selon le curseur, case « Animer les tirs » et légende · AC-5, AC-8
+- [ ] Verify it: `/check verify animation des tirs`
+
+code in `src/components/animationTir.ts`, `src/components/GrapheReseau.tsx`
 
 ## Deferred
 Hors du périmètre actuel, gardé pour que le plan reste honnête.

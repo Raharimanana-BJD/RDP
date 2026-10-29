@@ -35,7 +35,7 @@ export default function App() {
     if (seq.choix) return sequentiel.choisir(t)
     if (verrouille || !actives.includes(t)) return
     if (seq.source.type === 'scenario') sequentiel.interrompre()
-    dispatch({ type: 'tirer', transition: t })
+    dispatch({ type: 'tirer', transition: t, origine: 'manuel' })
   }
 
   return (
@@ -75,6 +75,9 @@ export default function App() {
               choix={seq.choix}
               derniere={sim.historique.at(-1)?.transition ?? null}
               verrouille={verrouille}
+              tir={sim.historique.at(-1) ?? null}
+              vitesseMs={seq.vitesseMs}
+              animer={seq.animerTirs}
               onTransition={tirerManuel}
               onSurvol={setSurvol}
             />
@@ -141,6 +144,9 @@ function Legende() {
       </li>
       <li>
         <span className="barre conflit" /> Franchissable, en conflit
+      </li>
+      <li>
+        <span className="barre en-tir" /> Transition en cours de tir
       </li>
       <li>
         <span className="barre derniere" /> Dernière transition tirée

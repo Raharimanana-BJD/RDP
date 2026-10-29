@@ -64,7 +64,9 @@ export function PanneauSequentiel(props: {
   modeLibre: () => void
   lancerScenario: (id: string) => void
   reglages: (
-    r: Partial<Pick<EtatSequentiel, 'vitesseMs' | 'politique' | 'arretRetourInitial'>>,
+    r: Partial<
+      Pick<EtatSequentiel, 'vitesseMs' | 'politique' | 'arretRetourInitial' | 'animerTirs'>
+    >,
   ) => void
 }) {
   const { seq } = props
@@ -107,6 +109,14 @@ export function PanneauSequentiel(props: {
           value={2700 - seq.vitesseMs}
           onChange={(e) => props.reglages({ vitesseMs: 2700 - Number(e.target.value) })}
         />
+      </label>
+      <label className="reglage reglage-case">
+        <input
+          type="checkbox"
+          checked={seq.animerTirs}
+          onChange={(e) => props.reglages({ animerTirs: e.target.checked })}
+        />
+        Animer les tirs
       </label>
       <fieldset className="reglage" disabled={!!scenarioActif}>
         <legend>En cas de choix entre plusieurs transitions</legend>
