@@ -4,6 +4,9 @@
   "version": "1.0.0",
   "description": "Simulateur de Réseau de Petri des appels téléphoniques (appel réussi et appel échoué)",
   "type": "module",
+  "engines": {
+    "node": "22"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
