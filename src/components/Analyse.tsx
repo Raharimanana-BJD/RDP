@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { grapheAccessibilite, matrices, proprietes, verifierInvariants } from '../rdp/analyse'
 import { decrireMarquage, marquagesEgaux, trouverTransition } from '../rdp/moteur'
 import type { Marquage, Reseau } from '../rdp/types'
+import { POLICE, quandPoliceChargee } from './police'
 
 export function Analyse(props: { reseau: Reseau; marquage: Marquage }) {
   const { reseau } = props
@@ -61,7 +62,7 @@ export function Analyse(props: { reseau: Reseau; marquage: Marquage }) {
         <h2>Graphe des marquages accessibles</h2>
         <p className="aide">
           {g.etats.length} marquages, {g.arcs.length} arcs. M0 est le marquage initial ; le marquage
-          courant de la simulation est entouré en rouge. Survolez un marquage pour le lire.
+          courant de la simulation est surligné en jaune. Survolez un marquage pour le lire.
         </p>
         <GrapheMarquages reseau={reseau} courant={courant} />
       </section>
@@ -154,31 +155,43 @@ function GrapheMarquages({ reseau, courant }: { reseau: Reseau; courant: number 
           style: {
             label: 'data(label)',
             'text-valign': 'center',
+            'font-family': POLICE,
             'font-size': 13,
             'font-weight': 700,
+            color: '#111111',
             width: 44,
             height: 44,
-            'background-color': '#e0f2fe',
-            'border-width': 2,
-            'border-color': '#0369a1',
+            'background-color': '#c7ddff',
+            'border-width': 3,
+            'border-color': '#111111',
           },
         },
         {
           selector: 'node.initial',
-          style: { 'background-color': '#bbf7d0', 'border-color': '#15803d' },
+          style: { 'background-color': '#22c55e' },
         },
-        { selector: 'node.courant', style: { 'border-width': 5, 'border-color': '#dc2626' } },
+        {
+          selector: 'node.courant',
+          style: {
+            'background-color': '#ffd23f',
+            'underlay-color': '#111111',
+            'underlay-opacity': 1,
+            'underlay-padding': 4,
+          },
+        },
         {
           selector: 'edge',
           style: {
-            width: 1.5,
+            width: 2,
             'curve-style': 'bezier',
             'target-arrow-shape': 'triangle',
-            'line-color': '#94a3b8',
-            'target-arrow-color': '#94a3b8',
+            'line-color': '#111111',
+            'target-arrow-color': '#111111',
             label: 'data(label)',
+            'font-family': POLICE,
             'font-size': 10,
-            color: '#475569',
+            'font-weight': 500,
+            color: '#111111',
             'text-rotation': 'autorotate',
             'text-background-color': '#ffffff',
             'text-background-opacity': 0.85,
@@ -199,12 +212,15 @@ function GrapheMarquages({ reseau, courant }: { reseau: Reseau; courant: number 
     cy.on('mouseover', 'node', (e) => setSurvol(`${e.target.id()} : ${e.target.data('texte')}`))
     cy.on('mouseout', 'node', () => setSurvol(null))
     cyRef.current = cy
+    let vivant = true
+    quandPoliceChargee(() => vivant && cy.style().update())
     const observateur = new ResizeObserver(() => {
       cy.resize()
       cy.fit(undefined, 30)
     })
     if (conteneur.current) observateur.observe(conteneur.current)
     return () => {
+      vivant = false
       observateur.disconnect()
       cy.destroy()
     }

@@ -15,8 +15,13 @@ import {
   type Phase,
   type Point,
 } from './animationTir'
+import { POLICE, quandPoliceChargee } from './police'
 
 const COULEUR_LIGNE = { A: '#2563eb', B: '#9333ea', 'A+B': '#0d9488' } as const
+
+// Mêmes valeurs que `src/index.css` (Cytoscape dessine sur un canvas, sans variables CSS).
+const ENCRE = '#111111'
+const FOND = '#fff6e5'
 
 /** Image SVG des jetons : de 1 à 4 points, au delà un nombre. */
 function imageJetons(n: number): string {
@@ -43,9 +48,9 @@ function imageJetons(n: number): string {
       ? ''
       : n <= 4
         ? positions[n]
-            .map(([x, y]) => `<circle cx="${x}" cy="${y}" r="6.5" fill="#0f172a"/>`)
+            .map(([x, y]) => `<circle cx="${x}" cy="${y}" r="6.5" fill="${ENCRE}"/>`)
             .join('')
-        : `<text x="30" y="37" font-size="20" font-family="sans-serif" font-weight="bold" text-anchor="middle" fill="#0f172a">${n}</text>`
+        : `<text x="30" y="37" font-size="20" font-family="sans-serif" font-weight="bold" text-anchor="middle" fill="${ENCRE}">${n}</text>`
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 60 60">${contenu}</svg>`
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
 }
@@ -58,22 +63,26 @@ const STYLE: cytoscape.StylesheetJson = [
       width: 60,
       height: 60,
       'background-color': '#ffffff',
-      'border-width': 3,
+      'border-width': 5,
       'border-color': 'data(couleur)',
+      'outline-width': 2,
+      'outline-color': ENCRE,
+      'outline-offset': 0,
       'background-image': 'data(image)',
       'background-width': '100%',
       'background-height': '100%',
       label: 'data(nom)',
       'text-valign': 'bottom',
       'text-margin-y': 6,
+      'font-family': POLICE,
       'font-size': 13,
-      'font-weight': 600,
-      color: '#1e293b',
+      'font-weight': 700,
+      color: ENCRE,
       'text-wrap': 'wrap',
       'text-max-width': '120px',
-      'text-background-color': '#f8fafc',
-      'text-background-opacity': 0.9,
-      'text-background-padding': '2px',
+      'text-background-color': FOND,
+      'text-background-opacity': 1,
+      'text-background-padding': '3px',
     },
   },
   {
@@ -82,16 +91,20 @@ const STYLE: cytoscape.StylesheetJson = [
       shape: 'rectangle',
       width: 14,
       height: 50,
-      'background-color': '#64748b',
+      'background-color': '#9a9a9a',
+      'border-width': 2,
+      'border-color': ENCRE,
       label: 'data(nom)',
       'text-valign': 'top',
       'text-margin-y': -4,
+      'font-family': POLICE,
       'font-size': 12,
-      color: '#334155',
+      'font-weight': 500,
+      color: ENCRE,
       'text-wrap': 'wrap',
       'text-max-width': '120px',
-      'text-background-color': '#f8fafc',
-      'text-background-opacity': 0.9,
+      'text-background-color': '#ffffff',
+      'text-background-opacity': 1,
       'text-background-padding': '2px',
     },
   },
@@ -111,49 +124,60 @@ const STYLE: cytoscape.StylesheetJson = [
   {
     selector: 'node.franchissable',
     style: {
-      'background-color': '#16a34a',
+      'background-color': '#22c55e',
       'border-width': 3,
-      'border-color': '#bbf7d0',
-      color: '#14532d',
+      'border-color': ENCRE,
       'font-weight': 700,
+      'text-background-color': '#bbf7d0',
     },
   },
   {
     selector: 'node.conflit',
-    style: { 'background-color': '#ea580c', 'border-color': '#fed7aa', color: '#7c2d12' },
+    style: { 'background-color': '#ff8a3d', 'text-background-color': '#ffd8b8' },
+  },
+  // Avant `choix` : le survol ne doit pas cacher le fond jaune d'une transition à choisir.
+  {
+    selector: 'node.survol',
+    style: { 'underlay-color': ENCRE, 'underlay-opacity': 0.15, 'underlay-padding': 8 },
   },
   {
     selector: 'node.choix',
-    style: { 'border-width': 6, 'border-color': '#facc15' },
+    style: {
+      'border-width': 3,
+      'underlay-color': '#ffd23f',
+      'underlay-opacity': 1,
+      'underlay-padding': 6,
+      'underlay-shape': 'round-rectangle',
+    },
   },
   {
     selector: 'node.inactif',
-    style: { opacity: 0.45 },
+    style: { 'background-opacity': 0.4, 'border-opacity': 0.4 },
   },
   {
     selector: 'node.derniere',
     style: {
-      'background-color': '#dc2626',
-      'border-color': '#fecaca',
+      'background-color': '#ff4d4d',
+      'border-color': ENCRE,
       'border-width': 3,
-      opacity: 1,
+      'text-background-color': '#ffc9c9',
+      'background-opacity': 1,
+      'border-opacity': 1,
     },
-  },
-  {
-    selector: 'node.survol',
-    style: { 'underlay-color': '#38bdf8', 'underlay-opacity': 0.25, 'underlay-padding': 8 },
   },
   {
     selector: 'edge',
     style: {
-      width: 2,
-      'line-color': '#94a3b8',
-      'target-arrow-color': '#94a3b8',
+      width: 2.5,
+      'line-color': ENCRE,
+      'target-arrow-color': ENCRE,
       'target-arrow-shape': 'triangle',
-      'arrow-scale': 1.1,
+      'arrow-scale': 1.2,
       'curve-style': 'bezier',
       label: 'data(poids)',
+      'font-family': POLICE,
       'font-size': 12,
+      'font-weight': 700,
       'text-background-color': '#ffffff',
       'text-background-opacity': 1,
     },
@@ -165,37 +189,42 @@ const STYLE: cytoscape.StylesheetJson = [
       'control-point-distances': 'data(courbe)',
       'control-point-weights': 0.5,
       'line-style': 'dashed',
-      'line-dash-pattern': [7, 4],
+      'line-dash-pattern': [8, 5],
+      'line-color': '#6b6b6b',
+      'target-arrow-color': '#6b6b6b',
     },
   },
   {
     selector: 'edge.derniere',
-    style: { 'line-color': '#dc2626', 'target-arrow-color': '#dc2626', width: 3.5 },
+    style: { 'line-color': '#ff4d4d', 'target-arrow-color': '#ff4d4d', width: 4 },
   },
   // Animation d'un tir : après `derniere` pour l'emporter.
   {
     selector: 'node.en-tir',
     style: {
-      'background-color': '#facc15',
-      'border-color': '#fef08a',
-      'underlay-color': '#facc15',
-      'underlay-opacity': 0.45,
+      'background-color': '#ffd23f',
+      'border-color': ENCRE,
+      'border-width': 3,
+      'underlay-color': '#ffd23f',
+      'underlay-opacity': 0.6,
       'underlay-padding': 10,
-      opacity: 1,
+      'background-opacity': 1,
+      'border-opacity': 1,
     },
   },
   {
     selector: 'edge.en-cours',
-    style: { 'line-color': '#eab308', 'target-arrow-color': '#eab308', width: 4 },
+    style: { 'line-color': '#e0a800', 'target-arrow-color': '#e0a800', width: 4.5 },
   },
   {
     selector: 'node.jeton-anim',
     style: {
       shape: 'ellipse',
-      width: 13,
-      height: 13,
-      'background-color': '#0f172a',
-      'border-width': 0,
+      width: 14,
+      height: 14,
+      'background-color': ENCRE,
+      'border-width': 2,
+      'border-color': '#ffd23f',
       label: '',
       events: 'no',
       'z-index-compare': 'manual',
@@ -370,6 +399,7 @@ export function GrapheReseau(props: Props) {
       wheelSensitivity: 0.3,
     })
     cyRef.current = cy
+    quandPoliceChargee(() => cyRef.current?.style().update())
 
     cy.on('tap', 'node.transition', (e) => propsRef.current.onTransition(e.target.id()))
     cy.on('mouseover', 'node', (e) => {
